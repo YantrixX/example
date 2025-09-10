@@ -75,6 +75,59 @@ END;
 $$;
 
 ```
+CREATE OR REPLACE PROCEDURE delete_orphan_records_by_month(
+    schema_name TEXT,
+    second_table TEXT,
+    first_table TEXT,
+    fk_column TEXT,
+    month_start DATE
+)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    month_end DATE := (month_start + INTERVAL '1 month')::DATE;
+    deleted_count INTEGER;
+    rec RECORD;
+BEGIN
+    RAISE NOTICE 'Checking orphan records in %.% for %', schema_name, second_table, month_start;
+
+    -- Step 1: Print the records about to be deleted
+    FOR rec IN EXECUTE format(
+        'SELECT st.* FROM %I.%I st
+         WHERE TO_TIMESTAMP(st.event_time_int::BIGINT / 1000) >= $1
+           AND TO_TIMESTAMP(st.event_time_int::BIGINT / 1000) < $2
+           AND NOT EXISTS (
+             SELECT 1 FROM %I.%I ft
+             WHERE ft.id = st.%I
+           )',
+        schema_name, second_table,
+        schema_name, first_table, fk_column
+    )
+    USING month_start, month_end
+    LOOP
+        -- Print or log fields (adjust as needed)
+        RAISE NOTICE 'Will delete orphan row: id=%, %=%',
+            rec.id, fk_column, rec.(fk_column);  -- if fk_column is known and fixed
+    END LOOP;
+
+    -- Step 2: Delete the records
+    EXECUTE format(
+        'DELETE FROM %I.%I st
+         WHERE TO_TIMESTAMP(st.event_time_int::BIGINT / 1000) >= $1
+           AND TO_TIMESTAMP(st.event_time_int::BIGINT / 1000) < $2
+           AND NOT EXISTS (
+             SELECT 1 FROM %I.%I ft
+             WHERE ft.id = st.%I
+           )',
+        schema_name, second_table,
+        schema_name, first_table, fk_column
+    )
+    USING month_start, month_end;
+
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RAISE NOTICE 'Deleted % orphan records from %.% for month %', deleted_count, schema_name, second_table, month_start;
+END;
+$$;
 
 ```sql
 
