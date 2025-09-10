@@ -28,6 +28,7 @@ RAISE NOTICE 'Orphan cleanup completed in %I.%I.', schema_name, second_table;
 RAISE NOTICE 'All partition drops completed, now cleaning up orphan records...';
 
 -- Step 6: Delete old orphaned records from reference table
+```sql
 EXECUTE format(
     'DELETE FROM %I.%I st
      WHERE TO_TIMESTAMP(st.event_time_int::BIGINT / 1000) < $1
@@ -41,3 +42,4 @@ EXECUTE format(
 USING latest_available_date - MAKE_INTERVAL(months := months_to_keep);
 
 RAISE NOTICE 'Orphan cleanup completed in %I.%I.', schema_name, second_table;
+```
