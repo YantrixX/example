@@ -16,6 +16,7 @@ BEGIN
         end_epoch,
         schema_name, first_table, fk_column
     );
+```
 
 ```sql
 -- Stored Procedure: drop_old_partitions
