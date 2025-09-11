@@ -168,7 +168,26 @@ BEGIN
     GET DIAGNOSTICS del_base_count = ROW_COUNT;
     RAISE NOTICE 'Deleted % base rows from %.% older than %.', del_base_count, schema_name, base_table, cutoff_date;
 
-    -- 5) Safety pass: remove any remaining ORPHANS i
+    -- 5) Safety pass: remove any remaining ORPHANS in second_table older than cutoff
+    EXECUTE format(
+        'DELETE FROM %I.%I st
+         WHERE (st.%I::BIGINT)/%s < %s
+           AND NOT EXISTS (
+             SELECT 1 FROM %I.%I ft
+             WHERE ft.%I = st.%I AND ft.%I = st.%I
+           )',
+        schema_name, second_table,
+        ts_column, factor, cutoff_epoch,
+        schema_name, base_table,
+        id_column, id_column,
+        ts_column, ts_column
+    );
+    GET DIAGNOSTICS del_orphan_count = ROW_COUNT;
+    RAISE NOTICE 'Deleted % additional orphan rows from %.% older than %.', del_orphan_count, schema_name, second_table, cutoff_date;
+
+    RAISE NOTICE 'Non-partitioned purge completed.';
+END;
+$$;
 
 -- Example manual call:
 -- CALL purge_old_rows_non_partitioned('public', 'first_table', 'second_table', 'first_table_id', 2, TRUE);
@@ -179,7 +198,6 @@ BEGIN
 --   '0 2 1-7 * 0',
 --   $$ CALL purge_old_rows_non_partitioned('public','first_table','second_table','first_table_id', 2, TRUE); $$
 -- );
-
 
 ```
 
