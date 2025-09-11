@@ -130,6 +130,23 @@ END;
 $$;
 
 ```sql
+DECLARE
+    start_epoch BIGINT := EXTRACT(EPOCH FROM month_start);
+    end_epoch   BIGINT := EXTRACT(EPOCH FROM month_end);
+BEGIN
+    EXECUTE format(
+        'DELETE FROM %I.%I st
+         WHERE (st.event_time_int::BIGINT / 1000) >= %s
+           AND (st.event_time_int::BIGINT / 1000) < %s
+           AND NOT EXISTS (
+             SELECT 1 FROM %I.%I ft
+             WHERE ft.id = st.%I
+           )',
+        schema_name, second_table,
+        start_epoch,
+        end_epoch,
+        schema_name, first_table, fk_column
+    );
 
 ```
 
