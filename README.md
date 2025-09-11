@@ -39,9 +39,6 @@ DECLARE
     formatted_date DATE;
     mismatch_count INT;
     latest_available_date DATE;
-    deleted_count INTEGER;
-    orphan_start_epoch BIGINT;
-    orphan_end_epoch BIGINT;
 BEGIN
     -- Step 1: Get the latest available month from base table
     EXECUTE format(
@@ -57,11 +54,7 @@ BEGIN
 
     RAISE NOTICE 'Latest available date in data: %', latest_available_date;
 
-    -- Step 2: Calculate retention window for orphan deletion
-    orphan_start_epoch := EXTRACT(EPOCH FROM DATE_TRUNC('month', latest_available_date - MAKE_INTERVAL(months := months_to_keep + 1)));
-    orphan_end_epoch := EXTRACT(EPOCH FROM DATE_TRUNC('month', latest_available_date - MAKE_INTERVAL(months := months_to_keep)));
-
-    -- Step 3: Loop through partitions
+    -- Step 2: Loop through partitions
     FOR partition_name IN
         SELECT tablename
         FROM pg_tables
@@ -79,7 +72,7 @@ BEGIN
             'YYYY-MM'
         );
 
-        -- Step 4: Validate data within partition matches partition naming
+        -- Step 3: Validate data within partition matches partition naming
         EXECUTE format(
             'SELECT COUNT(*) FROM %I.%I WHERE EXTRACT(YEAR FROM TO_TIMESTAMP(event_time_int::BIGINT / 1000)) != %s 
              OR EXTRACT(MONTH FROM TO_TIMESTAMP(event_time_int::BIGINT / 1000)) != %s',
@@ -91,9 +84,15 @@ BEGIN
             CONTINUE;
         END IF;
 
-        -- Step 5: Drop if partition is older than retention threshold
+        -- Step 4: Drop if partition is older than retention threshold
         IF formatted_date < latest_available_date - MAKE_INTERVAL(months := months_to_keep) THEN
             RAISE NOTICE 'Dropping partition: %', partition_name;
+
+            -- Step 5: Call orphan delete procedure for that month
+            EXECUTE format(
+                'CALL delete_orphan_records_by_month(''%I'', ''%I'', ''%I'', ''%I'', DATE ''%s'')',
+                schema_name, second_table, base_table, fk_column, formatted_date
+            );
 
             -- Delete dependent records
             EXECUTE format(
@@ -106,29 +105,9 @@ BEGIN
         END IF;
     END LOOP;
 
-    -- Step 6: Clean orphan records from second_table within the dropped period
-    RAISE NOTICE 'Deleting orphan records in %.% between epochs % and %', schema_name, second_table, orphan_start_epoch, orphan_end_epoch;
-
-    EXECUTE format(
-        'DELETE FROM %I.%I st
-         WHERE (st.event_time_int::BIGINT / 1000) >= %s
-           AND (st.event_time_int::BIGINT / 1000) < %s
-           AND NOT EXISTS (
-             SELECT 1 FROM %I.%I ft
-             WHERE ft.id = st.%I
-           )',
-        schema_name, second_table,
-        orphan_start_epoch, orphan_end_epoch,
-        schema_name, base_table, fk_column
-    );
-
-    GET DIAGNOSTICS deleted_count = ROW_COUNT;
-    RAISE NOTICE 'Deleted % orphan records from %.%', deleted_count, schema_name, second_table;
-
     RAISE NOTICE 'Partition and orphan cleanup completed.';
 END;
 $$;
-
 ```
 ```sql
 
