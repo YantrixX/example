@@ -17,7 +17,7 @@ BEGIN
         schema_name, first_table, fk_column
     );
 
-```
+```sql
 -- Stored Procedure: drop_old_partitions
 -- Description: Drops old partitions from a partitioned table and deletes orphan records from a referencing table based on dynamic retention logic.
 
@@ -127,9 +127,6 @@ BEGIN
     RAISE NOTICE 'Partition and orphan cleanup completed.';
 END;
 $$;
-
-
-```sql
 
 ```
 ```sql
